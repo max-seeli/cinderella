@@ -1,9 +1,6 @@
 from __future__ import annotations
-from typing import Tuple, Union, List
+from typing import Tuple, Union, List, Set
 import sympy as sp
-import z3
-
-from util import to_z3, format_smt2
 
 
 class ConstraintSystem:
@@ -19,11 +16,30 @@ class ConstraintSystem:
     """
 
     def __init__(self, 
-                 constraint_pairs: List[ConstraintPair] = None,
+                 program_variables: List[sp.Symbol],
                  use_invariants: bool = False
                  ) -> None:
-        self.constraint_pairs = constraint_pairs if constraint_pairs else []
+        self.program_variables = program_variables
+        self.free_constraints = []
+        self.constraint_pairs = []
         self.use_invariants = use_invariants
+
+    def __str__(self) -> str:
+        free = "\n".join([str(c) for c in self.free_constraints])
+        pairs = "\n".join([str(p) for p in self.constraint_pairs])
+
+        return f'Free Constraints:\n{free}\nConstraint Pairs:\n{pairs}'
+
+    def add_free_constraint(self, constraint: sp.Basic) -> None:
+        """
+        Add a free constraint to the constraint system.
+
+        Parameters
+        ----------
+        constraint : sp.Basic
+            The free constraint to be added to the constraint system.
+        """
+        self.free_constraints.append(Constraint(constraint))
 
     def add_constraint_pair(self, constraint_pair: Union[ConstraintPair, Tuple]) -> None:
         """
@@ -47,10 +63,36 @@ class ConstraintSystem:
         file_path : str
             The path to the SMT2 file.
         """
-        s = z3.Solver()
-        constraints = [cp.to_z3(self.use_invariants) for cp in self.constraint_pairs]
-        s.add([c for c in constraints if c is not None])
-        smt2 = format_smt2(s.to_smt2())
+        symbols = set()
+        smt2_constraints = []
+        for constraint in self.free_constraints:
+            symbols.update(constraint.get_variables())
+            smt_constraint = constraint.to_smt()
+            smt2 = f'(assert {smt_constraint})'
+            smt2_constraints.append(smt2)
+
+        for pair in self.constraint_pairs:
+            
+            symbols.update(pair.get_variables())
+            
+            smt_constraint = pair.to_smt(self.use_invariants)
+
+            variable_defs = []
+            for v in self.program_variables:
+                variable_defs.append(f'({v.name} Real)')
+            variable_defs = f"({' '.join(variable_defs)})"
+            smt_quantified = f'(forall {variable_defs} {smt_constraint})'
+            
+            smt2 = f'(assert {smt_quantified})'
+            smt2_constraints.append(smt2)
+
+        symbols = symbols - set(self.program_variables)
+
+        declarations = []
+        for s in symbols:
+            declarations.append(f'(declare-const {s.name} Real)')
+
+        smt2 = '\n'.join(declarations + smt2_constraints + ['(check-sat)', '(get-model)'])
 
         with open(file_path, 'w') as f:
             f.write(smt2)
@@ -72,35 +114,118 @@ class ConstraintPair:
     def __init__(self, 
                  condition: sp.Basic,
                  implication: sp.Basic,
-                 invariants: List[sp.Basic] = None
+                 invariants: List[sp.Basic] = []
                  ) -> None:
-        self.condition = condition
-        self.implication = implication
+        self.condition = Constraint(condition)
+        self.implication = Constraint(implication)
         self.invariants = invariants
 
-    def to_z3(self, use_invariants: bool = False) -> z3.BoolRef:
+    def __str__(self) -> str:
+        return f'{self.condition} => {self.implication}'
+    
+    def get_variables(self) -> Set[sp.Symbol]:
         """
-        Convert the constraint pair to a Z3 expression.
-
-        Parameters
-        ----------
-        use_invariants : bool
-            Whether to use the invariants in the constraint pair.
+        Get the variables in the constraint pair.
 
         Returns
         -------
-        z3.BoolRef
-            The Z3 expression representing the constraint pair.
+        List[sp.Symbol]
+            The variables in the constraint pair.
         """
-        lhs = to_z3(self.condition)
-        rhs = to_z3(self.implication)
+        return self.condition.get_variables().union(self.implication.get_variables())
+    
+    def to_smt(self, use_invariants=False) -> str:
+        """
+        Convert the constraint pair to an SMT2 string.
+
+        Returns
+        -------
+        str
+            The SMT2 string representing the constraint pair.
+        """
+        condition = self.condition.formula
         if use_invariants:
-            for invariant in self.invariants:
-                lhs = z3.And(lhs, to_z3(invariant))
+            condition = sp.And(*self.invariants, condition)
         
-        if str(lhs) == 'False' or str(rhs) == 'True':
-            return None
-        return z3.Implies(lhs, rhs)        
+        if condition == sp.true:
+            # TODO: Maybe remove this case?
+            return f'(=> (> 1 0) {self.implication.to_smt()})'
+        
+        condition = Constraint(condition)
 
+        return f'(=> {condition.to_smt()} {self.implication.to_smt()})'
+    
+class Constraint:
+    """
+    A class representing a constraint.
 
+    Attributes
+    ----------
+    formula : sp.Basic
+        The formula of the constraint.
+    """
 
+    def __init__(self, formula: sp.Basic) -> None:
+        self.formula = formula
+
+    def __str__(self) -> str:
+        return str(self.formula)
+
+    def get_variables(self) -> Set[sp.Symbol]:
+        """
+        Get the variables in the constraint.
+
+        Returns
+        -------
+        List[sp.Symbol]
+            The variables in the constraint.
+        """
+        return self.formula.free_symbols
+
+    def to_smt(self) -> str:
+        """
+        Convert the constraint pair to an SMT2 string.
+
+        Returns
+        -------
+        str
+            The SMT2 string representing the constraint pair.
+        """
+        return f'{self.__to_smt(self.formula)}'
+
+    def __to_smt(self, constraint: sp.Basic) -> str:
+        """
+        Convert a constraint to an SMT2 string.
+
+        Parameters
+        ----------
+        constraint : sp.Basic
+            The constraint to be converted.
+
+        Returns
+        -------
+        str
+            The SMT2 string representing the constraint.
+        """
+        if constraint.is_Relational:
+            op = constraint.rel_op if constraint.rel_op != '==' else '='
+            return f'({op} {self.__to_smt(constraint.lhs)} {self.__to_smt(constraint.rhs)})'
+        elif constraint.is_Add:
+            return f'(+ {" ".join([self.__to_smt(arg) for arg in constraint.args])})'
+        elif constraint.is_Mul:
+            return f'(* {" ".join([self.__to_smt(arg) for arg in constraint.args])})'
+        elif constraint.is_Function and constraint.is_Boolean:
+            return f'({str(constraint.func).lower()} {" ".join([self.__to_smt(arg) for arg in constraint.args])})'
+        elif isinstance(constraint, sp.UnevaluatedExpr):
+            return self.__to_smt(constraint.args[0])
+        elif constraint.is_Symbol:
+            return constraint.name
+        elif constraint.is_Number:
+            return str(constraint)
+        elif constraint == sp.true:
+            return 'true'
+        elif constraint == sp.false:
+            return 'false'
+        else:
+            raise ValueError(f'Unsupported constraint type: {type(constraint)}\n\tFor constraint: {constraint}')
+        

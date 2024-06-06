@@ -5,6 +5,8 @@ import sympy as sp
 from functools import reduce
 import subprocess
 
+from util import CustomPrinter
+
 FILE_LOCATION = os.path.dirname(os.path.realpath(__file__))
 
 class TransitionSystem:
@@ -43,8 +45,11 @@ class TransitionSystem:
 
         for location in self.locations:
             invariant = re.search(f'{location.name}\s+-+>\s+\{{(.*)\}}', invariant_output).group(1)
-            sp_form = sp.sympify(invariant)
-            location.invariant.formula = sp.And(*sp_form) if isinstance(sp_form, tuple) else sp_form
+            
+            invariants = [i.strip() for i in invariant.split(',')]
+            invariants = [re.sub(r'(\w)=(\w)', r'Eq(\1,\2)', i) for i in invariants]
+            sp_form = sp.sympify(invariants)
+            location.invariant.formula = sp.And(*sp_form) if isinstance(sp_form, list) else sp_form
 
     def generate_fst(self) -> None:
         """
@@ -70,7 +75,8 @@ class TransitionSystem:
             f.write('}')
 
             f.write(f'strategy s1 {{\n\n')
-            assertion_string = "".join([f" && {condition.formula}" for condition in self.assertion.values()])
+            assertion_conditions = [c.formula for c in self.assertion.values() if sp.simplify(c.formula) != sp.true]
+            assertion_string = "".join([f" && {CustomPrinter().doprint(condition)}" for condition in assertion_conditions])
             f.write(f'Region init := {{state={self.initial_location.name}{assertion_string}}};\n\n')
             f.write('}')
 
