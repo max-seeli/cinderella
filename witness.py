@@ -60,25 +60,24 @@ class CINDem:
                     location_conjunct = T
                     for transition in location.transitions[:-1]:
                         target_f = Fs[transition.target].subs(transition.update.transform_per_variable)
-                        location_conjunct &= sp.Or((this_f - target_f) * Gs[(location, transition)] < -1, sp.Not(transition.guard.formula))
+                        location_conjunct &= sp.Or((this_f - target_f) * Gs[(location, transition)] < 1, sp.Not(transition.guard.formula))
 
                     lst_transition = location.transitions[-1]
                     target_f = Fs[lst_transition.target].subs(lst_transition.update.transform_per_variable)
                     pair = ConstraintPair(
                         location_conjunct,
-                        ((this_f - target_f) * Gs[(location, lst_transition)] >= -1) & lst_transition.guard.formula,
+                        ((this_f - target_f) * Gs[(location, lst_transition)] >= 1) & lst_transition.guard.formula,
                         [location.invariant.formula]
                     )
                     cs.add_constraint_pair(pair)
                 else:
-                    # I(s0) & I(s1) => (f(s0) >= f(t(s1)) - 1/g(s0, s1))
+                    # I(s0) & I(s1) => (f(s0) >= f(t(s1)) + 1/g(s0, s1))
                     # Transformed to:
-                    # I(s0) & I(s1) => (f(s0) - f(t(s1)) * g(s0, s1) >= -1)
+                    # I(s0) & I(s1) => (f(s0) - f(t(s1)) * g(s0, s1) >= 1)
                     #
                     # f(s0) := f_0 + f_1 * x_1 + ... + f_n * x_n
                     # t(s0) := t_0 + t_1 * x_1 + ... + t_n * x_n
                     # f(t(s0)) := f_0 + f_1 * t(s0) + ... + f_n * t(s0)
-                    # TODO: Is this correct? Should it be f(s0) >= f(t(s1)) + 1/g(s0, s1)?
                     if len(location.transitions) != 1:
                         raise ValueError('Angelic infinite location must have exactly one transition.')
                     transition = location.transitions[0]
@@ -87,24 +86,32 @@ class CINDem:
                     
                     pair = ConstraintPair(
                         transition.guard.formula,
-                        (Fs[location] - target_f) * Gs[(location, transition)] >= - 1,
+                        (Fs[location] - target_f) * Gs[(location, transition)] >= 1,
                         [location.invariant.formula, transition.target_invariant()]
                     )
                     cs.add_constraint_pair(pair)
             
             else:
                 # 5b. Demonic location constraints
-                # I(s0) & I(s1) & guard(s0, s1) => f(s0) >= f(s1) - 1/g(s0, s1)
+                # I(s0) & I(s1) & guard(s0, s1) => f(s0) >= f(s1) + 1/g(s0, s1)
                 # Transformed to:
-                # I(s0) & I(s1) & guard(s0, s1) => f(s0) - f(s1) * g(s0, s1) >= -1
-                # TODO: is this correct? Should it be f(s0) >= f(s1) + 1/g(s0, s1)?
+                # I(s0) & I(s1) & guard(s0, s1) => (f(s0) - f(s1)) * g(s0, s1) >= 1
                 for transition in location.transitions:
+                    target_f = Fs[transition.target].subs(transition.update.transform_per_variable)
                     pair = ConstraintPair(
                         transition.guard.formula,
-                        (Fs[location] - Fs[transition.target].subs(transition.update.transform_per_variable)) * Gs[(location, transition)] >= - 1,
+                        (Fs[location] - target_f) * Gs[(location, transition)] >= 1,
                         [location.invariant.formula, transition.target_invariant()]
                     )
                     cs.add_constraint_pair(pair)
+
+                    """
+                    pair = ConstraintPair(
+                        transition.guard.formula,
+                        target_f * Gs[(location, transition)] >= 1,
+                    )
+                    cs.add_constraint_pair(pair)
+                    """
 
         # 6. Decreasing transition value constraints
         # I(s0) & I(s1) & I(s2) => g(s0, s1) - g(s1, s2) <= M
@@ -120,13 +127,13 @@ class CINDem:
                     )
                     cs.add_constraint_pair(pair)
  
-        # 7. Non-negativity constraints
-        # I(s0) & I(s1) => g(s0, s1) >= 0
+        # 7. Positivity constraints
+        # I(s0) & I(s1) => g(s0, s1) > 0
         for location in self.ts.locations:
             for transition in location.transitions:
                 pair = ConstraintPair(
                     transition.guard.formula,
-                    Gs[(location, transition)] >= 0,
+                    Gs[(location, transition)] > 0,
                     [location.invariant.formula, transition.target_invariant()]
                 )
                 cs.add_constraint_pair(pair)
