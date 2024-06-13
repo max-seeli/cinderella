@@ -8,6 +8,8 @@ import subprocess
 from util import CustomPrinter
 
 FILE_LOCATION = os.path.dirname(os.path.realpath(__file__))
+T = sp.Ge(sp.UnevaluatedExpr(1), 0)
+F = sp.Ge(sp.UnevaluatedExpr(-1), 0)
 
 class TransitionSystem:
 
@@ -37,18 +39,21 @@ class TransitionSystem:
         self.generate_fst()
         PROGRAM = os.path.join(FILE_LOCATION, 'aspic')
         FILE = os.path.join(FILE_LOCATION, f'fst/{self.name}.fst')
-        result = subprocess.run([PROGRAM, FILE], capture_output=True, text=True)
-        if result.returncode != 0:
-            raise ValueError(f'Error while generating invariants: {result.stderr}')
-        
+        result = subprocess.run([PROGRAM, FILE], capture_output=True, text=True)   
         invariant_output = result.stdout
 
         for location in self.locations:
-            invariant = re.search(f'{location.name}\s+-+>\s+\{{(.*)\}}', invariant_output).group(1)
+            invariant = re.search(f'{location.name}\s+-+>\s+\{{(.*)\}}', invariant_output)
             
+            if result.returncode != 0 and invariant == None:
+                raise ValueError(f'Error while generating invariants: {result.stderr} \nOutput: {result.stdout}')
+        
+            invariant = invariant.group(1)
             invariants = [i.strip() for i in invariant.split(',')]
-            invariants = [re.sub(r'(\w)=(\w)', r'Eq(\1,\2)', i) for i in invariants]
+            invariants = [re.sub(r'([\w]+)=([\w]+)', r'Eq(\1,\2)', i) for i in invariants]
+            invariants = [re.sub(r'(\d)([a-zA-Z])', r'\1*\2', i) for i in invariants] # Add implicit multiplication
             sp_form = sp.sympify(invariants)
+            print(f"Location {location.name} invariant: {sp_form}")
             location.invariant.formula = sp.And(*sp_form) if isinstance(sp_form, list) else sp_form
 
     def generate_fst(self) -> None:
@@ -68,8 +73,15 @@ class TransitionSystem:
                     f.write(f'transition t{i}_{j} := {{\n')
                     f.write(f' from := {location.name};\n')
                     f.write(f' to := {transition.target.name};\n')
-                    f.write(f' guard := {transition.guard.formula};\n')
-                    action_string = ",".join([f'{var.name}\'={update}' for var, update in transition.update.transform_per_variable.items()])
+                    guard_conjunct = sp.simplify(transition.guard.formula & transition.update.get_nondet_constraint())
+                    if isinstance(guard_conjunct, sp.And):
+                        guard_str = ' && '.join([str(arg) for arg in (transition.guard.formula & transition.update.get_nondet_constraint()).args if sp.simplify(arg) != sp.true])
+                    elif guard_conjunct == sp.true:
+                        guard_str = 'true'
+                    else:
+                        guard_str = str(guard_conjunct)
+                    f.write(f' guard := {guard_str};\n')
+                    action_string = ",".join([f'{var.name}\'={update}' for var, update in transition.update.get_transform_dict().items()])
                     f.write(f' action := {action_string};\n')
                     f.write(f'}};\n\n')
             f.write('}')
@@ -120,7 +132,7 @@ class Transition:
         sp.Basic
             The invariant of the target location after the update.
         """
-        invariant = self.target.invariant.formula.subs(self.update.transform_per_variable)
+        invariant = self.update(self.target.invariant.formula)
         if pre_transform:
             invariant = invariant.subs(pre_transform)
         return invariant
@@ -133,10 +145,27 @@ class Condition:
 class Update:
 
     def __init__(self, transform_per_variable) -> None:
-        self.transform_per_variable = transform_per_variable
+        self.__transform_per_variable = transform_per_variable
+
+        self.nondet_vars = []
+        for update_rule in self.__transform_per_variable.values():
+            free_vars = update_rule.free_symbols
+            self.nondet_vars.extend([var for var in free_vars if isinstance(var, NondeterministicVariable)])
+        self.nondet_constraint = sp.And(*[var.get_nondet_constraint() for var in self.nondet_vars])
+
 
     def __call__(self, expression: sp.Basic) -> sp.Basic:
-        return expression.subs(self.transform_per_variable)
+        return expression.subs(self.__transform_per_variable)
+    
+    def get_nondet_constraint(self) -> sp.Basic:
+        return self.nondet_constraint
+    
+    def get_nondet_vars(self) -> list[NondeterministicVariable]:
+        return self.nondet_vars
+    
+    def get_transform_dict(self) -> dict[Variable, sp.Basic]:
+        return self.__transform_per_variable
+
 
 class Variable(sp.Symbol):
 

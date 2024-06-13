@@ -150,6 +150,10 @@ class ConstraintPair:
         if condition == sp.true:
             # TODO: Maybe remove this case?
             return f'(=> (> 1 0) {self.implication.to_smt()})'
+        elif condition == sp.false:
+            return f'(=> (> 0 1) {self.implication.to_smt()})'
+        elif self.implication.formula == sp.true:
+            return f'(=> {Constraint(condition).to_smt()} (> 1 0))'
         
         condition = Constraint(condition)
 
