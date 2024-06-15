@@ -64,6 +64,7 @@ class ConstraintSystem:
             The path to the SMT2 file.
         """
         symbols = set()
+        additional_all_quantized_vars = set()
         smt2_constraints = []
         for constraint in self.free_constraints:
             symbols.update(constraint.get_variables())
@@ -74,11 +75,14 @@ class ConstraintSystem:
         for pair in self.constraint_pairs:
             
             symbols.update(pair.get_variables())
+
+            aaqv = set(pair.additional_all_quantized_vars)
+            additional_all_quantized_vars.update(aaqv)
             
             smt_constraint = pair.to_smt(self.use_invariants)
 
             variable_defs = []
-            for v in self.program_variables:
+            for v in self.program_variables + list(aaqv):
                 variable_defs.append(f'({v.name} Real)')
             variable_defs = f"({' '.join(variable_defs)})"
             smt_quantified = f'(forall {variable_defs} {smt_constraint})'
@@ -86,7 +90,7 @@ class ConstraintSystem:
             smt2 = f'(assert {smt_quantified})'
             smt2_constraints.append(smt2)
 
-        symbols = symbols - set(self.program_variables)
+        symbols = (symbols - set(self.program_variables)) - additional_all_quantized_vars
 
         declarations = []
         for s in symbols:
@@ -114,11 +118,13 @@ class ConstraintPair:
     def __init__(self, 
                  condition: sp.Basic,
                  implication: sp.Basic,
-                 invariants: List[sp.Basic] = []
+                 invariants: List[sp.Basic] = [],
+                 additional_all_quantized_vars: List[sp.Symbol] = []
                  ) -> None:
         self.condition = Constraint(condition)
         self.implication = Constraint(implication)
         self.invariants = invariants
+        self.additional_all_quantized_vars = additional_all_quantized_vars
 
     def __str__(self) -> str:
         return f'{self.condition} => {self.implication}'

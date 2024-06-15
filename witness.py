@@ -27,7 +27,8 @@ class CINDem:
         cs = ConstraintSystem(self.ts.variables, invariants)
 
         # 1. Generates invariants using ASPIC
-        ts.generate_invariants()
+        if invariants:
+            self.ts.generate_invariants()
         
         # 2. Positive constant 'M'
         M = sp.Symbol('M')
@@ -47,7 +48,16 @@ class CINDem:
         # 5. Angelic and demonic location constraints
         for location in self.ts.locations:
             this_f = Fs[location]
-            if location.is_angelic:
+            if not location.is_non_deterministic:
+                for transition in location.transitions:
+                    target_f = transition.update(Fs[transition.target])
+                    pair = ConstraintPair(
+                        transition.guard.formula,
+                        ((Fs[location] - target_f) * Gs[(location, transition)] >= 1) & (target_f >= 0),
+                        [location.invariant.formula, transition.target_invariant()]
+                    )
+                    cs.add_constraint_pair(pair)
+            elif location.is_angelic:
                 # 5a. Angelic location constraints
                 if location.is_finite:
                     # Only if all transitions have the same guard
@@ -90,7 +100,7 @@ class CINDem:
                     target_f = target_f.subs(nondet_t_update)
                     
                     pair = ConstraintPair(
-                        transition.guard.formula,
+                        transition.guard.formula.subs(nondet_t_update),
                         nondet_constraint & ((Fs[location] - target_f) * Gs[(location, transition)] >= 1) & (target_f >= 0),
                         [location.invariant.formula, transition.target_invariant()]
                     )
@@ -102,11 +112,15 @@ class CINDem:
                 # Transformed to:
                 # I(s0) & I(s1) & guard(s0, s1) => (f(s0) - f(s1)) * g(s0, s1) >= 1
                 for transition in location.transitions:
+                    nondet_vars = transition.update.get_nondet_vars()
+                    nondet_constraint = transition.update.get_nondet_constraint()
+
                     target_f = transition.update(Fs[transition.target])
                     pair = ConstraintPair(
-                        transition.guard.formula,
+                        transition.guard.formula & nondet_constraint,
                         ((Fs[location] - target_f) * Gs[(location, transition)] >= 1) & (target_f >= 0),
-                        [location.invariant.formula, transition.target_invariant()]
+                        [location.invariant.formula, transition.target_invariant()],
+                        additional_all_quantized_vars = nondet_vars 
                     )
                     cs.add_constraint_pair(pair)
 
@@ -122,22 +136,43 @@ class CINDem:
                     g_2 = transition1.update(Gs[(transition1.target, transition2)])
                     
                     guard2 = transition1.update(transition2.guard.formula)
-
-                    nondet_constraint = transition1.update.get_nondet_constraint() # True if no nondet vars
-                    if location.is_angelic and not location.is_finite:
+                  
+                    if location.is_non_deterministic and location.is_angelic and not location.is_finite:
                         nondet_vars = transition1.update.get_nondet_vars()
                         nondet_t_update = {ndet_var: Ts[location, ndet_var] for ndet_var in nondet_vars}
                         target2_invariant = target2_invariant.subs(nondet_t_update)
                         g_2 = g_2.subs(nondet_t_update)
                         guard2 = guard2.subs(nondet_t_update)
-                        nondet_constraint = nondet_constraint.subs(nondet_t_update)
-                        
-                    pair = ConstraintPair(
-                        transition1.guard.formula & guard2,
-                        (g_1 - g_2 <= M) & nondet_constraint,
-                        [location.invariant.formula, target1_invariant, target2_invariant]
-                    )
-                    cs.add_constraint_pair(pair)
+                        nondet_constraint = transition1.update.get_nondet_constraint().subs(nondet_t_update)
+
+                        pair = ConstraintPair(
+                            transition1.guard.formula & guard2,
+                            (g_1 - g_2 <= M) & nondet_constraint,
+                            [location.invariant.formula, target1_invariant, target2_invariant],
+                        )
+                        cs.add_constraint_pair(pair)
+
+
+                    elif location.is_non_deterministic and not location.is_angelic and not location.is_finite:
+                        nondet_vars = transition1.update.get_nondet_vars()
+                        nondet_constraint = transition1.update.get_nondet_constraint()
+
+                        pair = ConstraintPair(
+                            transition1.guard.formula & guard2 & nondet_constraint,
+                            (g_1 - g_2 <= M),
+                            [location.invariant.formula, target1_invariant, target2_invariant],
+                            additional_all_quantized_vars = nondet_vars
+                        )
+
+                    else:
+                        pair = ConstraintPair(
+                            transition1.guard.formula & guard2,
+                            (g_1 - g_2 <= M),
+                            [location.invariant.formula, target1_invariant, target2_invariant],
+                        )
+                        cs.add_constraint_pair(pair)
+
+                    
  
         # 7. Positivity constraints
         # I(s0) & I(s1) => g(s0, s1) > 0
@@ -228,10 +263,10 @@ if __name__ == '__main__':
 
     c = {x: Condition(x > 0), i: Condition(sp.Eq(i, 1))}
 
-    l1 = Location("l1", None, Condition(T), False, True)
-    l2 = Location("l2", None, Condition(T), False, True)
-    l3 = Location("l3", None, Condition(T), True, False)
-    l4 = Location("l4", None, Condition(T), False, True)
+    l1 = Location("l1", None, Condition(T), False, False, True)
+    l2 = Location("l2", None, Condition(T), False, False, True)
+    l3 = Location("l3", None, Condition(T), True, False, False)
+    l4 = Location("l4", None, Condition(T), False, False, True)
 
     t1 = Transition(l2, Condition(T), Update({x: x, i: i}))
     l1.transitions = [t1]
@@ -240,7 +275,7 @@ if __name__ == '__main__':
     t3 = Transition(l4, Condition(i > x), Update({x: x, i: i}))
     l2.transitions = [t2, t3]
 
-    non_det_1: NondeterministicVariable = NondetGenerator.generate_nondet_variable('non_det_1', 0.5, 1.5)
+    non_det_1: NondeterministicVariable = NondetGenerator.generate_nondet_variable('non_det_1', 0.1, 1.5)
     t4 = Transition(l2, Condition(T), Update({x: x, i: i + non_det_1}))
     l3.transitions = [t4]
 

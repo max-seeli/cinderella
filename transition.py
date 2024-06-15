@@ -98,12 +98,14 @@ class Location:
                  name: str,
                  transitions: list[Transition],
                  invariant: Condition,
+                 is_non_deterministic: bool,
                  is_angelic: bool,
                  is_finite: bool
                  ) -> None:
         self.name = name
         self.transitions = transitions
         self.invariant = invariant
+        self.is_non_deterministic = is_non_deterministic
         self.is_angelic = is_angelic
         self.is_finite = is_finite
 
