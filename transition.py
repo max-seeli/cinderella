@@ -50,9 +50,10 @@ class TransitionSystem:
         
             invariant = invariant.group(1)
             invariants = [i.strip() for i in invariant.split(',')]
-            invariants = [re.sub(r'([\w]+)=([\w]+)', r'Eq(\1,\2)', i) for i in invariants]
+            invariants = [re.sub(r'([\w\s\+\*\-]+)=([\w\s\+\*\-]+)', r'Eq(\1,\2)', i) for i in invariants] # Replace = with Eq
+
             invariants = [re.sub(r'(\d)([a-zA-Z])', r'\1*\2', i) for i in invariants] # Add implicit multiplication
-            sp_form = sp.sympify(invariants)
+            sp_form = [sp.sympify(i) for i in invariants]
             print(f"Location {location.name} invariant: {sp_form}")
             location.invariant.formula = sp.And(*sp_form) if isinstance(sp_form, list) else sp_form
 
@@ -74,12 +75,7 @@ class TransitionSystem:
                     f.write(f' from := {location.name};\n')
                     f.write(f' to := {transition.target.name};\n')
                     guard_conjunct = sp.simplify(transition.guard.formula & transition.update.get_nondet_constraint())
-                    if isinstance(guard_conjunct, sp.And):
-                        guard_str = ' && '.join([str(arg) for arg in (transition.guard.formula & transition.update.get_nondet_constraint()).args if sp.simplify(arg) != sp.true])
-                    elif guard_conjunct == sp.true:
-                        guard_str = 'true'
-                    else:
-                        guard_str = str(guard_conjunct)
+                    guard_str = self.expression_to_fst(guard_conjunct)
                     f.write(f' guard := {guard_str};\n')
                     action_string = ",".join([f'{var.name}\'={update}' for var, update in transition.update.get_transform_dict().items()])
                     f.write(f' action := {action_string};\n')
@@ -91,6 +87,33 @@ class TransitionSystem:
             assertion_string = "".join([f" && {CustomPrinter().doprint(condition)}" for condition in assertion_conditions])
             f.write(f'Region init := {{state={self.initial_location.name}{assertion_string}}};\n\n')
             f.write('}')
+
+    def expression_to_fst(self, expression: sp.Basic) -> str:
+        """
+        Convert a sympy expression to a string that can be used in the FST file.
+
+        Parameters
+        ----------
+        expression : sp.Basic
+            The sympy expression to convert.
+
+        Returns
+        -------
+        str
+            The string representation of the expression.
+        """
+        if isinstance(expression, sp.And):
+            return ' && '.join([self.expression_to_fst(arg) for arg in expression.args if sp.simplify(arg) != sp.true])
+        elif isinstance(expression, sp.Or):
+            return ' || '.join([self.expression_to_fst(arg) for arg in expression.args if sp.simplify(arg) != sp.false])
+        elif isinstance(expression, sp.Eq):
+            return f'{self.expression_to_fst(expression.lhs)} = {self.expression_to_fst(expression.rhs)}'
+        elif expression == sp.true:
+            return 'true'
+        elif expression == sp.false:
+            return 'false'
+        else:
+            return str(expression)
 
 class Location:
 
@@ -114,11 +137,13 @@ class Transition:
     def __init__(self, 
                  target: Location,
                  guard: Condition,
-                 update: Update
+                 update: Update,
+                 additional_update_constraint: Condition = None
                  ) -> None:
         self.target = target
         self.guard = guard
         self.update = update
+        self.additional_update_constraint = additional_update_constraint
     
     def target_invariant(self, pre_transform=None) -> sp.Basic:
         """

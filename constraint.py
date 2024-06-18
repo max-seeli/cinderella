@@ -20,8 +20,8 @@ class ConstraintSystem:
                  use_invariants: bool = False
                  ) -> None:
         self.program_variables = program_variables
-        self.free_constraints = []
-        self.constraint_pairs = []
+        self.free_constraints: List[Constraint] = []
+        self.constraint_pairs: List[ConstraintPair] = []
         self.use_invariants = use_invariants
 
     def __str__(self) -> str:
@@ -53,6 +53,23 @@ class ConstraintSystem:
         if isinstance(constraint_pair, tuple):
             constraint_pair = ConstraintPair(*constraint_pair)
         self.constraint_pairs.append(constraint_pair)
+
+    def subs(self, substitution: dict) -> None:
+        """
+        Substitute variables in the constraint system.
+
+        Parameters
+        ----------
+        substitution : dict
+            The substitution dictionary.
+        """
+        for constraint in self.free_constraints:
+            constraint.formula = constraint.formula.subs(substitution)
+        for pair in self.constraint_pairs:
+            pair.condition.formula = pair.condition.formula.subs(substitution)
+            pair.implication.formula = pair.implication.formula.subs(substitution)
+            for i, inv in enumerate(pair.invariants):
+                pair.invariants[i] = inv.subs(substitution)
 
     def write_smt2(self, file_path: str) -> None:
         """
