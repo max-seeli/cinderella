@@ -235,8 +235,11 @@ class Constraint:
             The SMT2 string representing the constraint.
         """
         if constraint.is_Relational:
-            op = constraint.rel_op if constraint.rel_op != '==' else '='
-            return f'({op} {self.__to_smt(constraint.lhs)} {self.__to_smt(constraint.rhs)})'
+            arg_pair = f'{self.__to_smt(constraint.lhs)} {self.__to_smt(constraint.rhs)}'
+            if constraint.rel_op == '==':
+                return f'(and (<= {arg_pair}) (>= {arg_pair}))'
+            else:
+                return f'({constraint.rel_op} {arg_pair})'
         elif constraint.is_Add:
             return f'(+ {" ".join([self.__to_smt(arg) for arg in constraint.args])})'
         elif constraint.is_Mul:
