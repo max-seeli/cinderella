@@ -1,5 +1,8 @@
 from __future__ import annotations
-from typing import Tuple, Union, List, Set
+
+from typing import List, Set, Tuple, Union
+from warnings import warn
+
 import sympy as sp
 
 
@@ -144,7 +147,7 @@ class ConstraintPair:
         self.additional_all_quantized_vars = additional_all_quantized_vars
 
     def __str__(self) -> str:
-        return f'{self.condition} => {self.implication}'
+        return f'{sp.And(self.condition.formula, *self.invariants)} -> {self.implication.formula}'
     
     def get_variables(self) -> Set[sp.Symbol]:
         """
@@ -169,7 +172,6 @@ class ConstraintPair:
         condition = self.condition.formula
         if use_invariants:
             condition = sp.And(*self.invariants, condition)
-        
         if condition == sp.true:
             # TODO: Maybe remove this case?
             return f'(=> (> 1 0) {self.implication.to_smt()})'
@@ -255,7 +257,7 @@ class Constraint:
         elif constraint == sp.true:
             return 'true'
         elif constraint == sp.false:
-            return 'false'
+            return self.__to_smt(sp.UnevaluatedExpr(0) >= 1)
         else:
             raise ValueError(f'Unsupported constraint type: {type(constraint)}\n\tFor constraint: {constraint}')
         
