@@ -88,7 +88,28 @@ class Cinderella(Program):
             buckets[0]: 0,
             buckets[1]: 0,
         }))
-        cind.transitions = [cind1]
+
+        cind2 = Transition(sm, Condition(T), Update({
+            buckets[1]: 0,
+            buckets[2]: 0,
+        }))
+
+        cind3 = Transition(sm, Condition(T), Update({
+            buckets[2]: 0,
+            buckets[3]: 0,
+        }))
+
+        cind4 = Transition(sm, Condition(T), Update({
+            buckets[3]: 0,
+            buckets[4]: 0,
+        }))
+
+        cind5 = Transition(sm, Condition(T), Update({
+            buckets[4]: 0,
+            buckets[0]: 0,
+        }))
+
+        cind.transitions = [cind1, cind2, cind3, cind4, cind5]
         
         ts = TransitionSystem("cinderella", assertion, [
                               sm, cind, goal], sm, buckets)

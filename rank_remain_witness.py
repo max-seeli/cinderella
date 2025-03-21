@@ -40,6 +40,10 @@ class RRW:
 
     def find_witness(self) -> Any:
 
+
+        M = sp.Symbol("M")
+        self.cs.add_free_constraint(M > 0.05)
+
         for l in self.ts.locations:
             if l.name == "goal":
                 continue
@@ -79,7 +83,7 @@ class RRW:
                     continue
                 for part_curr, part_succ in product(self.ranking_function, repeat=2):
 
-                    rank_magnitude = part_curr["func"] - 0.04 if l.is_angelic else part_curr["func"]
+                    rank_magnitude = part_curr["func"] - M if l.is_angelic else part_curr["func"]
                     
                     rank_after_transition = t.update(part_succ["func"])
                     guard_after_transition = t.update(part_succ["guard"])
