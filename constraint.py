@@ -9,23 +9,21 @@ import sympy as sp
 class ConstraintSystem:
     """
     A class representing a constraint system.
-    
+
     Attributes
     ----------
+    free_constraints : List[Constraint]
+        A list of free constraints in the constraint system.
     constraint_pairs : List[ConstraintPair]
         A list of constraint pairs in the constraint system.
     use_invariants : bool
         Whether to use invariants in the constraint system.
     """
 
-    def __init__(self, 
-                 program_variables: List[sp.Symbol],
-                 use_invariants: bool = False
+    def __init__(self,
                  ) -> None:
-        self.program_variables = program_variables
         self.free_constraints: List[Constraint] = []
         self.constraint_pairs: List[ConstraintPair] = []
-        self.use_invariants = use_invariants
 
     def __str__(self) -> str:
         free = "\n".join([str(c) for c in self.free_constraints])
@@ -67,12 +65,9 @@ class ConstraintSystem:
             The substitution dictionary.
         """
         for constraint in self.free_constraints:
-            constraint.formula = constraint.formula.subs(substitution)
+            constraint.formula = constraint.formula.subs(substitution, simultaneous=True)
         for pair in self.constraint_pairs:
-            pair.condition.formula = pair.condition.formula.subs(substitution)
-            pair.implication.formula = pair.implication.formula.subs(substitution)
-            for i, inv in enumerate(pair.invariants):
-                pair.invariants[i] = inv.subs(substitution)
+            pair.subs(substitution)
 
     def write_smt2(self, file_path: str) -> None:
         """
@@ -83,43 +78,22 @@ class ConstraintSystem:
         file_path : str
             The path to the SMT2 file.
         """
-        symbols = set()
-        additional_all_quantized_vars = set()
+        free_variables = set().union(*[constraint.get_free_variables()
+                               for constraint in self.free_constraints + self.constraint_pairs])
+        print("Halt stopp", free_variables)
+        declarations = [
+            f'(declare-const {v.name} Real)' for v in free_variables]
+
         smt2_constraints = []
-        for constraint in self.free_constraints:
-            symbols.update(constraint.get_variables())
-            smt_constraint = constraint.to_smt()
-            smt2 = f'(assert {smt_constraint})'
-            smt2_constraints.append(smt2)
+        for constraint in self.free_constraints + self.constraint_pairs:
+            smt2_constraints.append(f'(assert {constraint.to_smt()})')
 
-        for pair in self.constraint_pairs:
-            
-            symbols.update(pair.get_variables())
-
-            aaqv = set(pair.additional_all_quantized_vars)
-            additional_all_quantized_vars.update(aaqv)
-            
-            smt_constraint = pair.to_smt(self.use_invariants)
-
-            variable_defs = []
-            for v in self.program_variables + list(aaqv):
-                variable_defs.append(f'({v.name} Real)')
-            variable_defs = f"({' '.join(variable_defs)})"
-            smt_quantified = f'(forall {variable_defs} {smt_constraint})'
-            
-            smt2 = f'(assert {smt_quantified})'
-            smt2_constraints.append(smt2)
-
-        symbols = (symbols - set(self.program_variables)) - additional_all_quantized_vars
-
-        declarations = []
-        for s in symbols:
-            declarations.append(f'(declare-const {s.name} Real)')
-
-        smt2 = '\n'.join(declarations + smt2_constraints + ['(check-sat)', '(get-model)'])
+        smt2 = '\n'.join(declarations + smt2_constraints +
+                         ['(check-sat)', '(get-model)'])
 
         with open(file_path, 'w') as f:
             f.write(smt2)
+
 
 class ConstraintPair:
     """
@@ -127,6 +101,8 @@ class ConstraintPair:
 
     Attributes
     ----------
+    forall_vars : List[sp.Symbol]
+        A list of universally quantified variables in the constraint pair.
     condition : sp.Basic
         The condition of the constraint pair.
     implication : sp.Basic
@@ -135,32 +111,61 @@ class ConstraintPair:
         A list of invariants in the constraint pair.
     """
 
-    def __init__(self, 
+    def __init__(self,
+                 forall_vars: List[sp.Symbol],
                  condition: sp.Basic,
                  implication: sp.Basic,
-                 invariants: List[sp.Basic] = [],
-                 additional_all_quantized_vars: List[sp.Symbol] = []
                  ) -> None:
+        self.forall_vars = forall_vars
         self.condition = Constraint(condition)
         self.implication = Constraint(implication)
-        self.invariants = invariants
-        self.additional_all_quantized_vars = additional_all_quantized_vars
 
     def __str__(self) -> str:
-        return f'{sp.And(self.condition.formula, *self.invariants)} -> {self.implication.formula}'
-    
-    def get_variables(self) -> Set[sp.Symbol]:
+        return f'{self.condition.formula} -> {self.implication.formula}'
+
+    def get_forall_variables(self) -> Set[sp.Symbol]:
         """
-        Get the variables in the constraint pair.
+        Get the universally quantified variables in the constraint pair.
 
         Returns
         -------
-        List[sp.Symbol]
+        Set[sp.Symbol]
+            The universally quantified variables in the constraint pair.
+        """
+        return set(self.forall_vars)
+
+    def get_free_variables(self) -> Set[sp.Symbol]:
+        """
+        Get the variables in the constraint pair that are not universally quantified.
+
+        Returns
+        -------
+        Set[sp.Symbol]
             The variables in the constraint pair.
         """
-        return self.condition.get_variables().union(self.implication.get_variables())
-    
-    def to_smt(self, use_invariants=False) -> str:
+        return set().union(
+            self.condition.get_free_variables(),
+            self.implication.get_free_variables(),
+        ).difference(self.get_forall_variables())
+        
+    def subs(self, substitution: dict) -> None:
+        """
+        Substitute variables in the constraint pair.
+
+        Parameters
+        ----------
+        substitution : dict
+            The substitution dictionary.
+        """
+        for i, var in enumerate(self.forall_vars):
+            if var in substitution:
+                print("Substituting", var, substitution[var])
+                assert False, "Substitution of universally quantified variables is not supported"
+                self.forall_vars[i] = substitution[var]
+        self.condition.formula = self.condition.formula.subs(substitution, simultaneous=True)
+        self.implication.formula = self.implication.formula.subs(substitution, simultaneous=True)
+
+    def to_smt(self) -> str:
         """
         Convert the constraint pair to an SMT2 string.
 
@@ -169,21 +174,11 @@ class ConstraintPair:
         str
             The SMT2 string representing the constraint pair.
         """
-        condition = self.condition.formula
-        if use_invariants:
-            condition = sp.And(*self.invariants, condition)
-        if condition == sp.true:
-            # TODO: Maybe remove this case?
-            return f'(=> (> 1 0) {self.implication.to_smt()})'
-        elif condition == sp.false:
-            return f'(=> (> 0 1) {self.implication.to_smt()})'
-        elif self.implication.formula == sp.true:
-            return f'(=> {Constraint(condition).to_smt()} (> 1 0))'
-        
-        condition = Constraint(condition)
+        forall_string = f"({' '.join([f'({v.name} Real)' for v in self.forall_vars])})"
 
-        return f'(=> {condition.to_smt()} {self.implication.to_smt()})'
-    
+        return f'(forall {forall_string} (=> {self.condition.to_smt()} {self.implication.to_smt()}))'
+
+
 class Constraint:
     """
     A class representing a constraint.
@@ -200,7 +195,7 @@ class Constraint:
     def __str__(self) -> str:
         return str(self.formula)
 
-    def get_variables(self) -> Set[sp.Symbol]:
+    def get_free_variables(self) -> Set[sp.Symbol]:
         """
         Get the variables in the constraint.
 
@@ -247,7 +242,45 @@ class Constraint:
         elif constraint.is_Mul:
             return f'(* {" ".join([self.__to_smt(arg) for arg in constraint.args])})'
         elif constraint.is_Function and constraint.is_Boolean:
-            return f'({str(constraint.func).lower()} {" ".join([self.__to_smt(arg) for arg in constraint.args])})'
+            f = str(constraint.func).lower()
+            if f == 'and':
+                assert len(
+                    constraint.args) >= 2, f'Expected 2 arguments, got {len(constraint.args)}'
+                return f'(and {" ".join([self.__to_smt(arg) for arg in constraint.args])})'
+            elif f == 'or':
+                assert len(
+                    constraint.args) >= 2, f'Expected 2 arguments, got {len(constraint.args)}'
+                return f'(or {" ".join([self.__to_smt(arg) for arg in constraint.args])})'
+            elif f == 'not':
+                assert len(
+                    constraint.args) == 1, f'Expected 1 argument, got {len(constraint.args)}'
+                child = constraint.args[0]
+                if isinstance(child, sp.Implies):
+                    assert len(
+                        child.args) == 2, f'Expected 2 arguments, got {len(child.args)}'
+                    return f'(and {self.__to_smt(child.args[0])} {self.__to_smt(sp.Not(child.args[1]))})'
+                elif isinstance(child, sp.And):
+                    assert len(
+                        child.args) >= 2, f'Expected 2 arguments, got {len(child.args)}'
+                    return f'(or {" ".join([self.__to_smt(sp.Not(arg)) for arg in child.args])})'
+                elif isinstance(child, sp.Or):
+                    assert len(
+                        child.args) >= 2, f'Expected 2 arguments, got {len(child.args)}'
+                    return f'(and {" ".join([self.__to_smt(sp.Not(arg)) for arg in child.args])})'
+                else:
+                    raise ValueError(
+                        f'Unable to reduce negation on: {type(child)}')
+            elif f == 'implies':
+                assert len(
+                    constraint.args) == 2, f'Expected 2 arguments, got {len(constraint.args)}'
+                # return f'(=> {to_smt(constraint.args[0])} {to_smt(constraint.args[1])})'
+                return f'(or {self.__to_smt(sp.Not(constraint.args[0]))} {self.__to_smt(constraint.args[1])})'
+            else:
+                warn(f'Unsupported function: {f}')
+                return f'({str(constraint.func).lower()} {" ".join([self.__to_smt(arg) for arg in constraint.args])})'
+        
+        
+        
         elif isinstance(constraint, sp.UnevaluatedExpr):
             return self.__to_smt(constraint.args[0])
         elif constraint.is_Symbol:
@@ -255,9 +288,9 @@ class Constraint:
         elif constraint.is_Number:
             return str(constraint)
         elif constraint == sp.true:
-            return 'true'
+            return '(>= 1 0)'
         elif constraint == sp.false:
-            return self.__to_smt(sp.UnevaluatedExpr(0) >= 1)
+            return '(>= 0 1)'  # self.__to_smt(sp.UnevaluatedExpr(0) >= 1)
         else:
-            raise ValueError(f'Unsupported constraint type: {type(constraint)}\n\tFor constraint: {constraint}')
-        
+            raise ValueError(
+                f'Unsupported constraint type: {type(constraint)}\n\tFor constraint: {constraint}')

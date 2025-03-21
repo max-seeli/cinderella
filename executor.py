@@ -8,13 +8,13 @@ import sys
 import time
 from argparse import ArgumentParser
 
-from polyhorn.main import execute_smt2
+from polyhorn.main import execute, load_config
 
 from programs import *
 from programs import __all__
 from transition import TransitionSystem
 from util import set_timeout
-from witness import CINDem
+from rank_remain_witness import RRW
 
 ROOT_FOLDER = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 CONFIGS_FOLDER = os.path.abspath(os.path.join(ROOT_FOLDER, 'configs'))
@@ -66,6 +66,10 @@ if __name__ == "__main__":
                         help='Use trivial g')
     parser.add_argument('--use-heuristic', action='store_true',
                         help='Use heuristic for finding the witness')
+    parser.add_argument('--c', type=int, default=1, 
+                        help='The number of conjunctions in the heuristic')
+    parser.add_argument('--d', type=int, default=1,
+                        help='The number of disjunctions in the heuristic')
     args, other_args = parser.parse_known_args()
     print(args, other_args)
     program: Program = getattr(sys.modules[__name__], args.program)(
@@ -73,13 +77,8 @@ if __name__ == "__main__":
 
     ts: TransitionSystem = program.get_transition_system()
 
-    if args.use_trivial_g:
-        trivial_g = program.get_trivial_g()
-
-    witness = CINDem(ts,
-                     use_invariants=args.use_invariants,
-                     trivial_g=trivial_g,
-                     use_heuristic=args.use_heuristic)
+    
+    witness = RRW(ts)
 
     start_create = time.time()
     witness.find_witness()
@@ -88,21 +87,19 @@ if __name__ == "__main__":
     smt2_file = os.path.abspath(os.path.join(
         ROOT_FOLDER, 'out', f'{ts.name}.smt2'))
 
-    with open(smt2_file, 'r') as f:
-        smt2_data = f.read()
-
-    for config in os.listdir(CONFIGS_FOLDER):
+    for config in sorted(os.listdir(CONFIGS_FOLDER)):
         print(f"Trying config: {config}")
-        args.config = os.path.join(CONFIGS_FOLDER, config)
+        config_dict = load_config(os.path.join(CONFIGS_FOLDER, config))
+        config_dict["output_path"] = config.replace(".json", ".txt")
 
         try:
             start_solve = time.time()
-            result = set_timeout(execute_smt2, 45, args.config, smt2_data)
+            result = set_timeout(execute, 120, smt2_file, config_dict)
             end_solve = time.time()
         except TimeoutError:
             print(f"Config {config} timed out")
             continue
-
+        
         if result[0] == 'sat':
             break
         print(f"Config {config} failed with result {result[0]}")
@@ -110,7 +107,7 @@ if __name__ == "__main__":
     print("PolyHorn output:")
     print(result[0])
     print("Model:")
-    Fs, Gs, Ts, Hs = witness.get_templates_from_model(result[1])
+    Fs, Gs, Ts, Hs, Ss = witness.get_templates_from_model(result[1])
 
     for location, F in Fs.items():
         print(f"F({location.name}): {F}")
@@ -123,6 +120,9 @@ if __name__ == "__main__":
 
     for location, H in Hs.items():
         print(f"H({location.name}): {H}")
+        
+    for (location, transition), S in Ss.items():
+        print(f"S({location.name}, {transition.target.name}): {S}")
 
     print(f"Time to create witness: {end_create - start_create}")
     print(f"Time to solve with PolyHorn: {end_solve - start_solve}")

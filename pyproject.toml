@@ -1,0 +1,13 @@
+[project]
+name = "cinderella"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.2.3",
+    "ply>=3.11",
+    "polyhorn>=0.0.7",
+    "regex>=2024.11.6",
+    "sympy>=1.13.3",
+]
