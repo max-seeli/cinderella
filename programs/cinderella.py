@@ -3,7 +3,6 @@ import math
 import sympy as sp
 
 from transition import Variable, Condition, Location, Transition, Update, TransitionSystem
-from witness import CINDem
 from template import get_template, get_linear_expression
 from . import Program
 
@@ -94,12 +93,3 @@ class Cinderella(Program):
         ts = TransitionSystem("cinderella", assertion, [
                               sm, cind, goal], sm, buckets)
         return ts
-
-    
-
-if __name__ == "__main__":
-    c = 0.8
-    cg = Cinderella(c, num_buckets=5)
-    ts = cg.get_transition_system()
-    cin = CINDem(ts, True, trivial_g=False)
-    cin.find_witness()
