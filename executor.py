@@ -8,7 +8,7 @@ import sys
 import time
 from argparse import ArgumentParser
 
-from polyhorn.main import execute, load_config
+from polyqent.main import execute, load_config
 
 from programs import *
 from programs import __all__
@@ -66,7 +66,7 @@ if __name__ == "__main__":
                         help='Use trivial g')
     parser.add_argument('--use-heuristic', action='store_true',
                         help='Use heuristic for finding the witness')
-    parser.add_argument('--c', type=int, default=1, 
+    parser.add_argument('--c', type=int, default=1,
                         help='The number of conjunctions in the heuristic')
     parser.add_argument('--d', type=int, default=1,
                         help='The number of disjunctions in the heuristic')
@@ -77,7 +77,6 @@ if __name__ == "__main__":
 
     ts: TransitionSystem = program.get_transition_system()
 
-    
     witness = RRW(ts)
 
     start_create = time.time()
@@ -94,12 +93,12 @@ if __name__ == "__main__":
 
         try:
             start_solve = time.time()
-            result = set_timeout(execute, 120, smt2_file, config_dict)
+            result = set_timeout(execute, 600, smt2_file, config_dict)
             end_solve = time.time()
         except TimeoutError:
             print(f"Config {config} timed out")
             continue
-        
+
         if result[0] == 'sat':
             break
         print(f"Config {config} failed with result {result[0]}")
@@ -107,22 +106,7 @@ if __name__ == "__main__":
     print("PolyHorn output:")
     print(result[0])
     print("Model:")
-    Fs, Gs, Ts, Hs, Ss = witness.get_templates_from_model(result[1])
-
-    for location, F in Fs.items():
-        print(f"F({location.name}): {F}")
-
-    for (location, transition), G in Gs.items():
-        print(f"G({location.name}, {transition.target.name}): {G}")
-
-    for (location, nondet_var), T in Ts.items():
-        print(f"T({location.name}, {nondet_var}): {T}")
-
-    for location, H in Hs.items():
-        print(f"H({location.name}): {H}")
-        
-    for (location, transition), S in Ss.items():
-        print(f"S({location.name}, {transition.target.name}): {S}")
+    witness.print_model(result[1])
 
     print(f"Time to create witness: {end_create - start_create}")
     print(f"Time to solve with PolyHorn: {end_solve - start_solve}")
