@@ -27,7 +27,7 @@ class ConstraintSystem:
 
     def __str__(self) -> str:
         free = "\n".join([str(c) for c in self.free_constraints])
-        pairs = "\n".join([str(p) for p in self.constraint_pairs])
+        pairs = "\n".join([f"[Pair {i+1}/{len(self.constraint_pairs)}] " + str(p) for i, p in enumerate(self.constraint_pairs)])
 
         return f'Free Constraints:\n{free}\nConstraint Pairs:\n{pairs}'
 

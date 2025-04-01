@@ -17,7 +17,7 @@ dependencies = [
 requires-dist = [
     { name = "numpy", specifier = ">=2.2.3" },
     { name = "ply", specifier = ">=3.11" },
-    { name = "polyqent", specifier = ">=0.0.12" },
+    { name = "polyqent", git = "https://github.com/ChatterjeeGroup-ISTA/polyqent.git?rev=dev" },
     { name = "regex", specifier = ">=2024.11.6" },
     { name = "sympy", specifier = ">=1.13.3" },
 ]
@@ -90,15 +90,11 @@ wheels = [
 [[package]]
 name = "polyqent"
 version = "0.0.12"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/ChatterjeeGroup-ISTA/polyqent.git?rev=dev#4a3fcc3314b885ec5ffc21e6a02aeec8b8d1d5d4" }
 dependencies = [
     { name = "lark" },
     { name = "numpy" },
     { name = "pysmt" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/11/36/6a8a0857113cb38f393507a2480ee4cfe9b37611a3624a2a14333beb79c9/polyqent-0.0.12.tar.gz", hash = "sha256:744575022fb1461ae1085ef7c6e4dcd0a9c5ecd4e29c117e87ac552965c13513", size = 30658 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e7/f7/1f4028e869072f5a9e2c3aa52ac6ac214dd204f9da650af401f6328c4b9c/polyqent-0.0.12-py3-none-any.whl", hash = "sha256:2b46c295b53265d46649db6237a70ec5dc474264cd383929ba79dd79ee48469c", size = 33552 },
 ]
 
 [[package]]

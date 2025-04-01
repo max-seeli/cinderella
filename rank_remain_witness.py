@@ -103,9 +103,7 @@ class RRW:
                     guard_after_transition = t.update(part_succ["guard"])
 
                     angelic_ranks = ConstraintPair(
-                        # TODO: Remove additional variables
-                        self.program_variables +
-                        [sp.Symbol(f"rank_{l.name}_{t.target.name}")],
+                        self.program_variables,
                         sp.And(t.guard.formula, l.invariant,
                                part_curr["guard"], guard_after_transition),
                         sp.And(0 <= rank_after_transition,
