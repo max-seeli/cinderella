@@ -80,7 +80,7 @@ class ConstraintSystem:
         """
         free_variables = set().union(*[constraint.get_free_variables()
                                for constraint in self.free_constraints + self.constraint_pairs])
-        print("Halt stopp", free_variables)
+        print("Free variables: ", free_variables)
         declarations = [
             f'(declare-const {v.name} Real)' for v in free_variables]
 
