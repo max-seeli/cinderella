@@ -14,7 +14,7 @@ from programs import *
 from programs import __all__
 from transition import TransitionSystem
 from util import set_timeout
-from rank_remain_witness import RRW
+from cinderella_loop_witness import CLW
 
 ROOT_FOLDER = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 CONFIGS_FOLDER = os.path.abspath(os.path.join(ROOT_FOLDER, 'configs'))
@@ -77,7 +77,8 @@ if __name__ == "__main__":
 
     ts: TransitionSystem = program.get_transition_system()
 
-    witness = RRW(ts)
+    witness = CLW(ts, parse_unknown_args(other_args)["eps"])
+    print(f"Program: {program}")
 
     start_create = time.time()
     witness.find_witness()
@@ -93,7 +94,7 @@ if __name__ == "__main__":
 
         try:
             start_solve = time.time()
-            result = set_timeout(execute, 60, smt2_file, config_dict, debug_mode=True)
+            result = set_timeout(execute, 60, smt2_file, config_dict, debug_mode=False)
             end_solve = time.time()
         except TimeoutError:
             print(f"Config {config} timed out")
