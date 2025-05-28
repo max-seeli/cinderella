@@ -94,7 +94,7 @@ if __name__ == "__main__":
 
         try:
             start_solve = time.time()
-            result = set_timeout(execute, 60, smt2_file, config_dict, debug_mode=False)
+            result = set_timeout(execute, 10, smt2_file, config_dict, debug_mode=False)
             end_solve = time.time()
         except TimeoutError:
             print(f"Config {config} timed out")
