@@ -6,6 +6,6 @@
     "max_d_of_strict": 2,
     "solver_name": "mathsat",
     "unsat_core_heuristic": false,
-    "SAT_heuristic": true,
+    "SAT_heuristic": false,
     "integer_arithmetic": false
 }
