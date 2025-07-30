@@ -6,13 +6,13 @@ from cinderella import OUT_DIR
 from cinderella.executor import execute_polyqent
 from cinderella.prefix_parser.parser import parse_expression
 from cinderella.template import get_polynomial_expression
-from cinderella.witness.witness import construct_constraints
+from cinderella.witness import construct_constraints
 
 if __name__ == "__main__":
     # -------------------------------------
     # Game Specification
     # -------------------------------------
-    eps = 10**(-10)  # bucket size is 2 - eps
+    eps = 0.1 # bucket size is 2 - eps
 
     M = sp.Symbol("M")
     variables = [M]

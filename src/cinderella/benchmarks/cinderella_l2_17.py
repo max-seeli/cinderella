@@ -6,55 +6,78 @@ from cinderella import OUT_DIR
 from cinderella.executor import execute_polyqent
 from cinderella.prefix_parser.parser import parse_expression
 from cinderella.template import get_polynomial_expression
-from cinderella.witness.witness import construct_constraints
+from cinderella.witness import construct_constraints
 
 if __name__ == "__main__":
     # -------------------------------------
     # Game Specification
     # -------------------------------------
-    v0, v1 = 2, 1
+    eps = 0.3 # bucket size is 2 - eps
 
     M = sp.Symbol("M")
     variables = [M]
     free_constraints = [M > 0]
 
-    x0, x1 = [sp.Symbol(f"x{i}") for i in range(2)]
-    game_variables = [x0, x1]
-    game_variable_invariants = [sp.And(x0 >= 0, x1 >= 0, x0 <= 100, x1 <= 100, x0 <= x1)]
+    x0, x1, x2, x3, x4 = [sp.Symbol(f"x{i}") for i in range(5)]
+    game_variables = [x0, x1, x2, x3, x4]
+    game_variable_invariants = [sp.And(x0 >= 0, x1 >= 0, x2 >= 0, x3 >= 0, x4 >= 0)]
 
-    x1_d = sp.Symbol("x1_d")
     safety_updates = [
         {
-            x1: x1 + x1_d,
+            x0: 0,
+            x1: 0,
         },
+        {
+            x1: 0,
+            x2: 0,
+        },
+        {
+            x2: 0,
+            x3: 0,
+        },
+        {
+            x3: 0,
+            x4: 0,
+        },
+        {
+            x4: 0,
+            x0: 0,
+        }
     ]
 
     reach_updates = {
-            x0: get_polynomial_expression(f"x0_upd", game_variables, degree=1),
-            x1: x1
+            var: get_polynomial_expression(f"{var}_upd", game_variables, degree=1) for var in game_variables
     }
 
     # Functions over updated vars f: x0', x1', x2', x3', x4' -> T/F
     reach_update_constraints = [
-        lambda x0_p, x1_p: sp.And(
-            x0 - reach_updates[x0] <= v0,
-            x0 - reach_updates[x0] >= -v0,
+        lambda x0_p, x1_p, x2_p, x3_p, x4_p: sp.GreaterThan(
+            1,
+            sp.Add((x0_p - x0) * (x0_p - x0),
+                   (x1_p - x1) * (x1_p - x1),
+                   (x2_p - x2) * (x2_p - x2),
+                   (x3_p - x3) * (x3_p - x3),
+                   (x4_p - x4) * (x4_p - x4))
+        ),
+        lambda x0_p, x1_p, x2_p, x3_p, x4_p: sp.And(
+            x0_p >= x0,
+            x1_p >= x1,
+            x2_p >= x2,
+            x3_p >= x3,
+            x4_p >= x4,
         ),
     ]
 
-    goal = sp.And(
-        sp.LessThan(x0 - x1, v1),
-        sp.GreaterThan(x0 - x1, -v1),
+    goal = sp.Or(
+        x0 > 1 - eps,
+        x1 > 1 - eps,
+        x2 > 1 - eps,
+        x3 > 1 - eps,
+        x4 > 1 - eps,
     )
 
-    rank_fn = get_polynomial_expression("rank_fn", [x0, x1], degree=1)
+    rank_fn = get_polynomial_expression("rank_fn", game_variables, degree=1)
     ranking_offset = M
-
-    non_det_aux_vars = [x1_d]
-    non_det_bounds = [
-        x1_d <= v1,
-        x1_d >= -v1,
-    ]
     # -------------------------------------
 
 
@@ -67,13 +90,10 @@ if __name__ == "__main__":
         safety_updates,
         goal,
         rank_fn,
-        ranking_offset,
-        non_det_aux_vars=non_det_aux_vars,
-        non_det_bounds=non_det_bounds,
-        use_target_not_reached=True,
+        ranking_offset
     )
 
-    witness_path = os.path.join(OUT_DIR, 'tag.smt2')
+    witness_path = os.path.join(OUT_DIR, 'cinderella_l2_17.smt2')
     cs.write_smt2(witness_path)
 
     result, model = execute_polyqent(witness_path)
@@ -87,7 +107,7 @@ if __name__ == "__main__":
 
         print("Rank Function:")
         print(rank_fn.subs(model, simultaneous=True))
-        print("Player 1 Update:")
+        print("Stepmother Update:")
         for key, value in reach_updates.items():
             if isinstance(value, sp.Basic):
                 value = value.evalf()

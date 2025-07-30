@@ -6,7 +6,7 @@ from cinderella import OUT_DIR
 from cinderella.executor import execute_polyqent
 from cinderella.prefix_parser.parser import parse_expression
 from cinderella.template import get_polynomial_expression
-from cinderella.witness.witness import construct_constraints
+from cinderella.witness import construct_constraints
 
 if __name__ == "__main__":
     # -------------------------------------
@@ -37,12 +37,12 @@ if __name__ == "__main__":
             x1: get_polynomial_expression(f"x1_upd", game_variables, degree=1)
     }
 
-    # Functions over updated vars f: x0', x1', x2', x3', x4' -> T/F
+    # Functions over updated vars f: x0', x1' -> T/F
     reach_update_constraints = [
         lambda x0_p, x1_p: sp.And(
             (x0_p - x0) + (x1_p - x1) <= vol,
-            x0_p >= x0, # Does this need to consider spillage?
-            x1_p >= x1, # Does this need to consider spillage?
+            x0_p >= x0, 
+            x1_p >= x1, 
         ),
     ]
 
@@ -50,7 +50,8 @@ if __name__ == "__main__":
         x0 >= 0,
         x1 >= 0,
         x0 + x1 > 9,
-        sp.GreaterThan(x0, 10 * x1 - 1)
+        sp.GreaterThan(x0, 9 * x1 - 1),
+        sp.LessThan(x0, 11 * x1 + 11),
     )
 
     rank_fn = get_polynomial_expression("rank_fn", [x0, x1], degree=1)
@@ -84,7 +85,7 @@ if __name__ == "__main__":
     witness_path = os.path.join(OUT_DIR, 'robot-cocktail.smt2')
     cs.write_smt2(witness_path)
 
-    result, model = execute_polyqent(witness_path)
+    result, model = execute_polyqent(witness_path, 1)
     if result == 'sat':
         print("Witness found:")
         model = {sp.Symbol(key): parse_expression(value)

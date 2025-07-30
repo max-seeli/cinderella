@@ -6,7 +6,7 @@ from cinderella import OUT_DIR
 from cinderella.executor import execute_polyqent
 from cinderella.prefix_parser.parser import parse_expression
 from cinderella.template import get_polynomial_expression
-from cinderella.witness.witness import construct_constraints
+from cinderella.witness import construct_constraints
 
 if __name__ == "__main__":
     # -------------------------------------
@@ -52,8 +52,12 @@ if __name__ == "__main__":
     # Functions over updated vars f: x0', x1', x2', x3', x4' -> T/F
     reach_update_constraints = [
         lambda x0_p, x1_p, x2_p, x3_p, x4_p: sp.GreaterThan(
-            sp.Add(x0, x1, x2, x3, x4) + 1,
-            sp.Add(x0_p, x1_p, x2_p, x3_p, x4_p)
+            1,
+            sp.Add((x0_p - x0) * (x0_p - x0),
+                   (x1_p - x1) * (x1_p - x1),
+                   (x2_p - x2) * (x2_p - x2),
+                   (x3_p - x3) * (x3_p - x3),
+                   (x4_p - x4) * (x4_p - x4))
         ),
         lambda x0_p, x1_p, x2_p, x3_p, x4_p: sp.And(
             x0_p >= x0,
@@ -89,7 +93,7 @@ if __name__ == "__main__":
         ranking_offset
     )
 
-    witness_path = os.path.join(OUT_DIR, 'cinderella_15.smt2')
+    witness_path = os.path.join(OUT_DIR, 'cinderella_l2_15.smt2')
     cs.write_smt2(witness_path)
 
     result, model = execute_polyqent(witness_path)
