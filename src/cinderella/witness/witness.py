@@ -64,14 +64,14 @@ def construct_constraints(game_variables: list[sp.Symbol],
         ]
 
         rank_correct = ConstraintPair(
-            game_variables + non_det_aux_vars,  # Add infinite nondeterminism variables
+            game_variables + non_det_aux_vars,
             sp.And(
                 *game_variable_invariants,
                 target_not_reached if use_target_not_reached else sp.true,
                 target_not_reached_upd,
                 *non_det_bounds,
                 *game_variable_invariants_after_safety,
-            ),  # Add infinite nondeterminism limits (ensure that only when invariants are satisfied with infinite nondeterminism, the lhs is satisfied, i.e. update the invariants)
+            ),
             sp.And(rank_fn - rank_fn_upd >= ranking_offset, *game_variable_invariants_upd),
         )
         cs.add_constraint_pair(rank_correct)

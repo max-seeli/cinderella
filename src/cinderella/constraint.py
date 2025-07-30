@@ -234,7 +234,11 @@ class Constraint:
         if constraint.is_Relational:
             arg_pair = f'{self.__to_smt(constraint.lhs)} {self.__to_smt(constraint.rhs)}'
             if constraint.rel_op == '==':
+                warn(f'Using equality in SMT2: {constraint}')
                 return f'(and (<= {arg_pair}) (>= {arg_pair}))'
+            elif constraint.rel_op == '!=':
+                warn(f'Using inequality in SMT2: {constraint}')
+                return f'(or (< {arg_pair}) (> {arg_pair}))'
             else:
                 return f'({constraint.rel_op} {arg_pair})'
         elif constraint.is_Add:
